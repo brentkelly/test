@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contact</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 32rem;
+      margin: 3rem auto;
+      padding: 0 1rem;
+      line-height: 1.5;
+    }
+    h1 { font-size: 1.5rem; }
+    label { display: block; margin-top: 1rem; font-weight: 600; }
+    input, textarea {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+      font: inherit;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    textarea { min-height: 8rem; resize: vertical; }
+    button {
+      margin-top: 1.25rem;
+      padding: 0.5rem 1.25rem;
+      font: inherit;
+      cursor: pointer;
+      border: 1px solid #333;
+      border-radius: 4px;
+      background: #333;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>Contact</h1>
+
+  <!-- onsubmit="return false" is deliberate: it is what makes the form inert.
+       Without it the form submits to the current URL and reloads the page. -->
+  <form onsubmit="return false">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" autocomplete="name">
+
+    <label for="message">Message</label>
+    <textarea id="message" name="message"></textarea>
+
+    <button type="submit">Send</button>
+  </form>
+</body>
+</html>
