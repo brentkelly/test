@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { pathToFileURL } from 'node:url'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
-import { findBrowser, launch } from './helpers/cdp.mjs'
+import { findBrowser, launch } from '../test-helpers/cdp.mjs'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const pageUrl = pathToFileURL(join(root, 'contact.html')).href

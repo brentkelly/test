@@ -119,9 +119,24 @@ function connect(wsUrl) {
   })
 }
 
-function makeSession(socket, cleanup) {
+export function makeSession(socket, cleanup) {
   let nextId = 1
   const pending = new Map()
+  // Set once the socket is gone. Every later send() fails fast with this rather
+  // than parking a promise nothing can ever settle.
+  let dead = null
+
+  // A dropped socket used to strand in-flight requests until the per-test
+  // timeout fired, which hid the real cause (usually a browser crash) behind a
+  // generic timeout. Fail them loudly instead.
+  const killPending = (error) => {
+    dead ??= error
+    for (const settle of pending.values()) settle.reject(error)
+    pending.clear()
+  }
+
+  socket.addEventListener('close', () => killPending(new Error('CDP socket closed')), { once: true })
+  socket.addEventListener('error', () => killPending(new Error('CDP socket errored')), { once: true })
 
   socket.addEventListener('message', (event) => {
     const frame = JSON.parse(event.data)
@@ -134,6 +149,10 @@ function makeSession(socket, cleanup) {
   })
 
   const send = (method, params = {}) => new Promise((resolve, reject) => {
+    if (dead) {
+      reject(dead)
+      return
+    }
     const id = nextId++
     pending.set(id, { resolve, reject })
     socket.send(JSON.stringify({ id, method, params }))
