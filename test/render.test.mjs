@@ -17,7 +17,9 @@ import { dirname, join, normalize } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const MOBILE_WIDTH = 375;
-const LOAD_TIMEOUT_MS = 15_000;
+const CDP_TIMEOUT_MS = 15_000;
+// Two suites, each with its own browser, so neither can inherit the other's port.
+const PORT_BASE = 9222 + (process.pid % 500);
 
 const PLAYWRIGHT_CACHE = join(process.env.HOME ?? "", ".cache/ms-playwright");
 const SHELL_PREFIX = "chromium_headless_shell-";
@@ -86,8 +88,22 @@ function serve() {
   );
 }
 
+/**
+ * Rejects if `promise` has not settled in time. Every wait on the browser goes
+ * through this: node:test applies no per-test timeout, so an unguarded one
+ * would hang the run instead of reporting what it was waiting for.
+ */
+function withDeadline(promise, what, ms) {
+  return Promise.race([
+    promise,
+    sleep(ms, null, { ref: false }).then(() => {
+      throw new Error(`${what} did not complete within ${ms}ms`);
+    }),
+  ]);
+}
+
 /** Minimal CDP client — enough to navigate and evaluate one expression. */
-async function connect(port) {
+async function connect(port, timeoutMs = CDP_TIMEOUT_MS) {
   let targets;
   for (let attempt = 0; attempt < 40; attempt++) {
     try {
@@ -101,10 +117,14 @@ async function connect(port) {
   const pending = new Map();
   const waiters = new Map();
   let id = 0;
-  await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = reject;
-  });
+  await withDeadline(
+    new Promise((resolve, reject) => {
+      ws.onopen = resolve;
+      ws.onerror = reject;
+    }),
+    "the CDP socket handshake",
+    timeoutMs,
+  );
   ws.onmessage = (event) => {
     const message = JSON.parse(event.data);
     // Events carry a method and no id; command replies carry an id.
@@ -119,20 +139,44 @@ async function connect(port) {
   };
   return {
     send: (method, params = {}) =>
-      new Promise((resolve) => {
-        const next = ++id;
-        pending.set(next, resolve);
-        ws.send(JSON.stringify({ id: next, method, params }));
-      }),
+      withDeadline(
+        new Promise((resolve) => {
+          const next = ++id;
+          pending.set(next, resolve);
+          ws.send(JSON.stringify({ id: next, method, params }));
+        }),
+        `CDP ${method}`,
+        timeoutMs,
+      ),
     /** Resolves on the next occurrence of a CDP event. Arm before you trigger it. */
-    once: (method) =>
-      new Promise((resolve) => {
-        const resolvers = waiters.get(method) ?? [];
-        resolvers.push(resolve);
-        waiters.set(method, resolvers);
-      }),
+    once: (method, what) =>
+      withDeadline(
+        new Promise((resolve) => {
+          const resolvers = waiters.get(method) ?? [];
+          resolvers.push(resolve);
+          waiters.set(method, resolvers);
+        }),
+        what ?? `CDP ${method}`,
+        timeoutMs,
+      ),
     close: () => ws.close(),
   };
+}
+
+/** Spawns headless Chrome on its own debugging port and returns a CDP client. */
+async function launch(port, timeoutMs = CDP_TIMEOUT_MS) {
+  const browser = spawn(
+    chrome,
+    [
+      "--no-sandbox",
+      "--disable-gpu",
+      `--remote-debugging-port=${port}`,
+      `--window-size=${MOBILE_WIDTH},800`,
+      "about:blank",
+    ],
+    { stdio: "ignore" },
+  );
+  return { browser, cdp: await connect(port, timeoutMs) };
 }
 
 const chrome = await findChrome();
@@ -153,33 +197,14 @@ describe("about.html renders", { skip: skipReason() }, () => {
 
   before(async () => {
     server = await serve();
-    const port = 9222 + (process.pid % 500);
-    browser = spawn(
-      chrome,
-      [
-        "--no-sandbox",
-        "--disable-gpu",
-        `--remote-debugging-port=${port}`,
-        `--window-size=${MOBILE_WIDTH},800`,
-        "about:blank",
-      ],
-      { stdio: "ignore" },
-    );
-    cdp = await connect(port);
+    ({ browser, cdp } = await launch(PORT_BASE));
     await cdp.send("Page.enable");
     // Arm the listener before navigating, or the event can land first.
-    const loaded = cdp.once("Page.loadEventFired");
+    const loaded = cdp.once("Page.loadEventFired", "the about.html load event");
     await cdp.send("Page.navigate", {
       url: `http://127.0.0.1:${server.address().port}/about.html`,
     });
-    await Promise.race([
-      loaded,
-      sleep(LOAD_TIMEOUT_MS, null, { ref: false }).then(() => {
-        throw new Error(
-          `about.html did not fire load within ${LOAD_TIMEOUT_MS}ms`,
-        );
-      }),
-    ]);
+    await loaded;
     const { result } = await cdp.send("Runtime.evaluate", {
       returnByValue: true,
       expression: `({
@@ -223,5 +248,42 @@ describe("about.html renders", { skip: skipReason() }, () => {
   test("shows the heading and the paragraph", () => {
     assert.equal(page.headingText, "About Us");
     assert.ok(page.paragraphHeight > 0, "paragraph rendered with zero height");
+  });
+});
+
+// A browser that stops replying must fail the run, not stall it: node:test
+// applies no default per-test timeout, so an un-time-boxed CDP round trip would
+// hang until the outer runner is killed, with no clue as to why.
+describe("the CDP client when the browser stops replying", { skip: skipReason() }, () => {
+  let browser;
+  let cdp;
+
+  after(() => {
+    cdp?.close();
+    browser?.kill();
+  });
+
+  test("fails loudly when Chrome exits with a command in flight", async () => {
+    ({ browser, cdp } = await launch(PORT_BASE + 1, 1_000));
+    // A command that can never reply, and then no browser left to reply with.
+    const inFlight = cdp
+      .send("Runtime.evaluate", {
+        expression: "new Promise(() => {})",
+        awaitPromise: true,
+      })
+      .then(() => "resolved", (error) => error);
+    browser.kill("SIGKILL");
+    await new Promise((resolve) => browser.once("exit", resolve));
+
+    const outcome = await Promise.race([
+      inFlight,
+      sleep(10_000, "hung", { ref: false }),
+    ]);
+    assert.notEqual(
+      outcome,
+      "hung",
+      "send() never settled — a dead browser hangs the whole run",
+    );
+    assert.match(String(outcome), /did not complete within/);
   });
 });
