@@ -46,6 +46,20 @@ describe("about.html document shell", () => {
   test("has an About Us title", () => {
     assert.equal(textOf("title"), "About Us");
   });
+
+  test("carries a meta description for the search snippet", () => {
+    const description = markup.match(
+      /<meta\b[^>]*name="description"[^>]*content="([^"]*)"/i,
+    );
+    assert.ok(description, "expected a meta description tag");
+    const text = description[1].trim();
+    assert.ok(text.length > 0, "meta description is empty");
+    // Long enough to be a useful snippet, short enough not to be truncated.
+    assert.ok(
+      text.length <= 160,
+      `meta description is ${text.length} chars; search engines truncate near 160`,
+    );
+  });
 });
 
 describe("about.html content", () => {
