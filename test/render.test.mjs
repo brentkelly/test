@@ -216,6 +216,12 @@ describe("about.html renders", { skip: skipReason() }, () => {
         clientWidth: document.documentElement.clientWidth,
         paragraphHeight: document.querySelector('main p').getBoundingClientRect().height,
         headingText: document.querySelector('h1').textContent.trim(),
+        socialLinkCount: document.querySelectorAll('footer a[href]').length,
+        socialIconBoxes: [...document.querySelectorAll('footer a svg')]
+          .map((s) => { const r = s.getBoundingClientRect(); return { w: r.width, h: r.height }; }),
+        socialNames: [...document.querySelectorAll('footer a')].map((a) => a.textContent.trim()),
+        socialTargetBoxes: [...document.querySelectorAll('footer a')]
+          .map((a) => { const r = a.getBoundingClientRect(); return { w: r.width, h: r.height }; }),
       })`,
     });
     page = result.result.value;
@@ -248,6 +254,38 @@ describe("about.html renders", { skip: skipReason() }, () => {
   test("shows the heading and the paragraph", () => {
     assert.equal(page.headingText, "About Us");
     assert.ok(page.paragraphHeight > 0, "paragraph rendered with zero height");
+  });
+
+  test("paints all three social icons at a visible size", () => {
+    assert.equal(page.socialLinkCount, 3);
+    assert.equal(page.socialIconBoxes.length, 3);
+    for (const [index, box] of page.socialIconBoxes.entries()) {
+      // A malformed or empty <svg> parses fine and lays out as nothing.
+      assert.ok(
+        box.w > 0 && box.h > 0,
+        `social icon ${index} rendered ${box.w}x${box.h}`,
+      );
+    }
+  });
+
+  test("gives each social link a 44px touch target", () => {
+    // Bare inline icons are 24px; only styles.css takes them to 44, so this
+    // fails if the stylesheet 404s or the rules never match.
+    for (const [index, box] of page.socialTargetBoxes.entries()) {
+      assert.ok(
+        box.w >= 44 && box.h >= 44,
+        `social link ${index} is ${box.w}x${box.h}, under the 44px minimum`,
+      );
+    }
+  });
+
+  test("keeps the social link names in the accessibility tree", () => {
+    assert.equal(page.socialNames.length, 3);
+    for (const [index, name] of page.socialNames.entries()) {
+      // visually-hidden clips the text; display:none would remove it entirely.
+      assert.ok(name.length > 0, `social link ${index} has no accessible name`);
+      assert.match(name, /new tab/i);
+    }
   });
 });
 
