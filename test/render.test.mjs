@@ -218,7 +218,13 @@ describe("about.html renders", { skip: skipReason() }, () => {
         headingText: document.querySelector('h1').textContent.trim(),
         socialLinkCount: document.querySelectorAll('footer a[href]').length,
         socialIconBoxes: [...document.querySelectorAll('footer a svg')]
-          .map((s) => { const r = s.getBoundingClientRect(); return { w: r.width, h: r.height }; }),
+          .map((s) => {
+            const r = s.getBoundingClientRect();
+            // getBBox() measures the painted geometry in user units, so it is
+            // 0x0 for an empty or non-drawing <path>; the client rect is not.
+            const g = s.getBBox();
+            return { w: r.width, h: r.height, pathW: g.width, pathH: g.height };
+          }),
         socialNames: [...document.querySelectorAll('footer a')].map((a) => a.textContent.trim()),
         socialTargetBoxes: [...document.querySelectorAll('footer a')]
           .map((a) => { const r = a.getBoundingClientRect(); return { w: r.width, h: r.height }; }),
@@ -260,10 +266,16 @@ describe("about.html renders", { skip: skipReason() }, () => {
     assert.equal(page.socialLinkCount, 3);
     assert.equal(page.socialIconBoxes.length, 3);
     for (const [index, box] of page.socialIconBoxes.entries()) {
-      // A malformed or empty <svg> parses fine and lays out as nothing.
+      // styles.css pins the <svg> box at 24x24, so the layout box only proves
+      // the stylesheet applied — a malformed path still occupies it.
       assert.ok(
         box.w > 0 && box.h > 0,
         `social icon ${index} rendered ${box.w}x${box.h}`,
+      );
+      // The painted geometry is what a malformed or empty <path> loses.
+      assert.ok(
+        box.pathW > 0 && box.pathH > 0,
+        `social icon ${index} draws nothing: path bbox ${box.pathW}x${box.pathH}`,
       );
     }
   });
