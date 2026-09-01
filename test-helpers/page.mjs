@@ -57,3 +57,27 @@ export function assertDocumentShell(page, filename) {
     stylesheetExists: () => fileExists("styles.css"),
   };
 }
+
+/**
+ * Extract the text content of the <main> element.
+ * @param {Object} page - The loaded page object
+ * @returns {string} The text content of the main element
+ */
+export function mainOf(page) {
+  const { markup } = page;
+  const m = markup.match(/<main(?:\s[^>]*)?>([\\s\\S]*?)<\/main>/i);
+  return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : "";
+}
+
+/**
+ * Count the number of sentences in the given text.
+ * A sentence is text ending with a period, question mark, or exclamation mark.
+ * @param {string} text - The text to analyze
+ * @returns {number} The number of sentences
+ */
+export function countSentences(text) {
+  // Match sentence-ending punctuation: period, question mark, exclamation
+  // Avoid counting abbreviations by requiring at least one space or character after
+  const sentences = text.match(/[.!?]+(?:\s|$)/g) || [];
+  return sentences.length;
+}
