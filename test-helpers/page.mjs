@@ -64,9 +64,7 @@ export function assertDocumentShell(page, filename) {
  * @returns {string} The text content of the main element
  */
 export function mainOf(page) {
-  const { markup } = page;
-  const m = markup.match(/<main(?:\s[^>]*)?>([\\s\\S]*?)<\/main>/i);
-  return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : "";
+  return getTextOf(page.markup, "main") ?? "";
 }
 
 /**

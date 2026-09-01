@@ -51,6 +51,7 @@ describe("skateboard-repairs.html content", () => {
 
   test("the main content has at most three sentences", () => {
     const main = mainOf(page);
+    assert.match(main, /^Skateboard Repairs We rebuild and repair skateboards,/);
     const sentences = countSentences(main);
     assert.ok(
       sentences <= 3,
