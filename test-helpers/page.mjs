@@ -16,6 +16,20 @@ export function getTextOf(markup, name) {
   return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : null;
 }
 
+export function getMarkupOf(markup, name) {
+  const m = markup.match(
+    new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, "i"),
+  );
+  return m ? m[1] : null;
+}
+
+export function countSentences(markup) {
+  if (!markup) return 0;
+  const text = markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  const matches = text.match(/[.!?]+(?=\s|$)/g);
+  return matches ? matches.length : 0;
+}
+
 export function loadPage(root, filename) {
   const html = readFileSync(join(root, filename), "utf8");
   const css = readFileSync(join(root, "styles.css"), "utf8");
@@ -27,6 +41,7 @@ export function loadPage(root, filename) {
     markup,
     tags: (name) => getTags(markup, name),
     textOf: (name) => getTextOf(markup, name),
+    mainOf: () => getMarkupOf(markup, "main"),
     fileExists: (path) => existsSync(join(root, path)),
   };
 }
