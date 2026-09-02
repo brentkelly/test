@@ -96,3 +96,16 @@ export function countSentences(text) {
     .split(/[.!?]+(?:\s|$)/)
     .filter((sentence) => sentence.trim().length > 0).length;
 }
+
+/**
+ * How many words a chunk of copy reads as, tags and markup ignored. Pairs with
+ * countSentences(): the service pages are capped at three sentences, so the
+ * only way to keep them saying something is to floor the word count too.
+ */
+export function countWords(text) {
+  const prose = (text ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return prose.length === 0 ? 0 : prose.split(" ").length;
+}
