@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import {
   loadPage,
   assertDocumentShell,
+  mainOf,
   countSentences,
 } from "../test-helpers/page.mjs";
 
@@ -54,8 +55,9 @@ describe("watch-repairs.html content", () => {
   });
 
   test("uses at most three sentences in the main content", () => {
+    const main = mainOf(page);
     assert.ok(
-      countSentences(page.mainOf()) <= 3,
+      countSentences(main) <= 3,
       "expected at most three sentences in <main>",
     );
   });
@@ -69,7 +71,7 @@ describe("watch-repairs.html content", () => {
   });
 
   test("<main> contains an inline link to clock repairs with meaningful text, outside the <nav>", () => {
-    const main = page.mainOf();
+    const main = mainOf(page);
     const navMatch = main.match(/<nav\b[^>]*>[\s\S]*?<\/nav>/i);
     const mainWithoutNav = navMatch
       ? main.slice(0, navMatch.index) + main.slice(navMatch.index + navMatch[0].length)
@@ -82,6 +84,10 @@ describe("watch-repairs.html content", () => {
 
     const linkText = clockLink[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
     assert.ok(linkText.length > 0, "clock repairs link has no text");
+  });
+
+  test("the heading precedes the paragraph", () => {
+    assert.ok(page.markup.search(/<h1\b/i) < page.markup.search(/<p\b/i));
   });
 });
 

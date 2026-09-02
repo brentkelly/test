@@ -2,7 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadPage, assertDocumentShell } from "../test-helpers/page.mjs";
+import { loadPage, assertDocumentShell, mainOf, countSentences } from "../test-helpers/page.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const page = loadPage(root, "skateboard-repairs.html");
@@ -37,28 +37,51 @@ describe("skateboard-repairs.html document shell", () => {
 
 describe("skateboard-repairs.html content", () => {
   test("wraps its content in a single <main> landmark", () => {
-    assert.equal(page.tags("main").length, 1);
+    assert.equal(page.tags("main").length, 1, "expected exactly one <main>");
   });
 
   test("has exactly one <h1>, reading 'Skateboard Repairs'", () => {
-    assert.equal(page.tags("h1").length, 1);
+    assert.equal(page.tags("h1").length, 1, "expected exactly one <h1>");
     assert.equal(page.textOf("h1"), "Skateboard Repairs");
   });
 
-  test("has exactly one paragraph with service description", () => {
-    assert.equal(page.tags("p").length, 1);
-    const paragraph = page.textOf("p");
-    assert.ok(paragraph, "expected a paragraph element");
+  test("has no <footer> element", () => {
+    assert.equal(page.tags("footer").length, 0, "expected no <footer>");
+  });
+
+  test("the main content has at most three sentences", () => {
+    const main = mainOf(page);
+    assert.match(main, /^Skateboard Repairs We rebuild and repair skateboards,/);
+    const sentences = countSentences(main);
     assert.ok(
-      paragraph.split(/\s+/).length >= 30,
-      `paragraph is only ${paragraph.split(/\s+/).length} words`,
+      sentences <= 3,
+      `expected at most 3 sentences, found ${sentences}: "${main}"`,
     );
   });
 
-  test("includes link back to all services", () => {
-    const navLinks = [...page.markup.matchAll(/<a\s+href="([^"]+)"/gi)];
-    const hrefs = navLinks.map((m) => m[1]);
-    assert.ok(hrefs.includes("services.html"), "missing link to services.html");
+  test("has exactly one <nav> with a single link to services.html", () => {
+    const navTags = page.tags("nav");
+    assert.equal(navTags.length, 1, "expected exactly one <nav>");
+
+    const navMatch = page.markup.match(/<nav(?:\s[^>]*)?>[\s\S]*?<\/nav>/i);
+    assert.ok(navMatch, "expected <nav> content");
+
+    const links = [...page.markup.matchAll(/<a\s+href="([^"]+)"/gi)];
+    const servicesLinks = links.filter(m => m[1] === "services.html");
+    assert.equal(servicesLinks.length, 1, "expected exactly one link to services.html");
+  });
+
+  test("the nav link includes an arrow with aria-hidden", () => {
+    const navMatch = page.markup.match(/<nav(?:\s[^>]*)?>[\s\S]*?<\/nav>/i);
+    assert.ok(navMatch, "expected <nav> content");
+
+    const navContent = navMatch[0];
+    const linkMatch = navContent.match(/<a\s+href="services\.html"[^>]*>[\s\S]*?<\/a>/i);
+    assert.ok(linkMatch, "expected link to services.html in nav");
+
+    const linkContent = linkMatch[0];
+    assert.ok(/←/.test(linkContent), "expected arrow (←) in link");
+    assert.ok(/aria-hidden/.test(linkContent), "expected aria-hidden attribute on arrow");
   });
 
   test("the heading precedes the paragraph", () => {

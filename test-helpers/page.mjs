@@ -16,20 +16,6 @@ export function getTextOf(markup, name) {
   return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : null;
 }
 
-export function getMarkupOf(markup, name) {
-  const m = markup.match(
-    new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, "i"),
-  );
-  return m ? m[1] : null;
-}
-
-export function countSentences(markup) {
-  if (!markup) return 0;
-  const text = markup.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-  const matches = text.match(/[.!?]+(?=\s|$)/g);
-  return matches ? matches.length : 0;
-}
-
 export function loadPage(root, filename) {
   const html = readFileSync(join(root, filename), "utf8");
   const css = readFileSync(join(root, "styles.css"), "utf8");
@@ -41,7 +27,6 @@ export function loadPage(root, filename) {
     markup,
     tags: (name) => getTags(markup, name),
     textOf: (name) => getTextOf(markup, name),
-    mainOf: () => getMarkupOf(markup, "main"),
     fileExists: (path) => existsSync(join(root, path)),
   };
 }
@@ -71,4 +56,26 @@ export function assertDocumentShell(page, filename) {
       markup.match(/<link\b[^>]*rel="stylesheet"[^>]*href="styles\.css"/i),
     stylesheetExists: () => fileExists("styles.css"),
   };
+}
+
+/**
+ * Extract the text content of the <main> element.
+ * @param {Object} page - The loaded page object
+ * @returns {string} The text content of the main element
+ */
+export function mainOf(page) {
+  return getTextOf(page.markup, "main") ?? "";
+}
+
+/**
+ * Count the number of sentences in the given text.
+ * A sentence is text ending with a period, question mark, or exclamation mark.
+ * @param {string} text - The text to analyze
+ * @returns {number} The number of sentences
+ */
+export function countSentences(text) {
+  // Match sentence-ending punctuation: period, question mark, exclamation
+  // Avoid counting abbreviations by requiring at least one space or character after
+  const sentences = text.match(/[.!?]+(?:\s|$)/g) || [];
+  return sentences.length;
 }
