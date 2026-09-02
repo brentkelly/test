@@ -2,7 +2,12 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { loadPage, assertDocumentShell } from "../test-helpers/page.mjs";
+import {
+  loadPage,
+  assertDocumentShell,
+  mainOf,
+  countSentences,
+} from "../test-helpers/page.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const page = loadPage(root, "watch-repairs.html");
@@ -45,29 +50,40 @@ describe("watch-repairs.html content", () => {
     assert.equal(page.textOf("h1"), "Watch Repairs");
   });
 
-  test("has exactly one paragraph with service description", () => {
-    assert.equal(page.tags("p").length, 1);
-    const paragraph = page.textOf("p");
-    assert.ok(paragraph, "expected a paragraph element");
+  test("has no <footer>", () => {
+    assert.equal(page.tags("footer").length, 0);
+  });
+
+  test("uses at most three sentences in the main content", () => {
+    const main = mainOf(page);
     assert.ok(
-      paragraph.split(/\s+/).length >= 30,
-      `paragraph is only ${paragraph.split(/\s+/).length} words`,
+      countSentences(main) <= 3,
+      "expected at most three sentences in <main>",
     );
   });
 
-  test("includes inline link to clock repairs page", () => {
-    const links = [...page.markup.matchAll(/<a\s+href="([^"]+)"/gi)];
-    const hrefs = links.map((m) => m[1]);
-    assert.ok(
-      hrefs.includes("clock-repairs.html"),
-      "missing link to clock-repairs.html",
-    );
+  test("has exactly one <nav> with a single link back to all services", () => {
+    assert.equal(page.tags("nav").length, 1);
+    const nav = page.markup.match(/<nav\b[^>]*>([\s\S]*?)<\/nav>/i)[1];
+    const navLinks = [...nav.matchAll(/<a\s+href="([^"]+)"[^>]*>/gi)];
+    assert.equal(navLinks.length, 1);
+    assert.equal(navLinks[0][1], "services.html");
   });
 
-  test("includes link back to all services", () => {
-    const links = [...page.markup.matchAll(/<a\s+href="([^"]+)"/gi)];
-    const hrefs = links.map((m) => m[1]);
-    assert.ok(hrefs.includes("services.html"), "missing link to services.html");
+  test("<main> contains an inline link to clock repairs with meaningful text, outside the <nav>", () => {
+    const main = mainOf(page);
+    const navMatch = main.match(/<nav\b[^>]*>[\s\S]*?<\/nav>/i);
+    const mainWithoutNav = navMatch
+      ? main.slice(0, navMatch.index) + main.slice(navMatch.index + navMatch[0].length)
+      : main;
+
+    const clockLink = mainWithoutNav.match(
+      /<a\s+href="clock-repairs\.html"[^>]*>([\s\S]*?)<\/a>/i,
+    );
+    assert.ok(clockLink, "expected an <a href=\"clock-repairs.html\"> inside <main>, outside <nav>");
+
+    const linkText = clockLink[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    assert.ok(linkText.length > 0, "clock repairs link has no text");
   });
 
   test("the heading precedes the paragraph", () => {
@@ -84,5 +100,15 @@ describe("stylesheet wiring", () => {
   test("styles.css file exists", () => {
     const shell = assertDocumentShell(page, "watch-repairs.html");
     assert.ok(shell.stylesheetExists(), "styles.css does not exist");
+  });
+});
+
+describe("linked files", () => {
+  test("clock-repairs.html exists", () => {
+    assert.ok(page.fileExists("clock-repairs.html"));
+  });
+
+  test("services.html exists", () => {
+    assert.ok(page.fileExists("services.html"));
   });
 });
