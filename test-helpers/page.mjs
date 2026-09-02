@@ -1,81 +1,111 @@
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+// Shared static-HTML assertions for the page tests.
+//
+// Every page in this repo is a standalone file with the same document shell, so
+// the tests were duplicating the same three helpers and the same eight shell
+// assertions per page. This holds them once. Like test-helpers/cdp.mjs it uses
+// only Node built-ins: the site has no build step, so the tests must not
+// introduce a parser dependency either.
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
-export function stripComments(html) {
-  return html.replace(/<!--[\s\S]*?-->/g, "");
-}
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-export function getTags(markup, name) {
-  return markup.match(new RegExp(`<${name}(?:\\s[^>]*)?>`, "gi")) ?? [];
-}
-
-export function getTextOf(markup, name) {
-  const m = markup.match(
-    new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, "i"),
-  );
-  return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : null;
-}
-
-export function loadPage(root, filename) {
+/**
+ * Reads a page from the repo root and returns it with the accessors the tests
+ * need. `markup` is the HTML with comments stripped, so commented-out markup
+ * can never satisfy a tag count; `html` is the file verbatim, for the doctype
+ * check that has to see the very first bytes.
+ */
+export function loadPage(filename) {
   const html = readFileSync(join(root, filename), "utf8");
-  const css = readFileSync(join(root, "styles.css"), "utf8");
-  const markup = stripComments(html);
+  const markup = html.replace(/<!--[\s\S]*?-->/g, "");
 
-  return {
-    html,
-    css,
+  /** Every opening tag of `name`, e.g. tags("li").length for a count. */
+  const tags = (name) =>
+    markup.match(new RegExp(`<${name}(?:\\s[^>]*)?>`, "gi")) ?? [];
+
+  /** The text of the first `name` element, tags stripped, or null. */
+  const textOf = (name) => {
+    const m = markup.match(
+      new RegExp(`<${name}(?:\\s[^>]*)?>([\\s\\S]*?)</${name}>`, "i"),
+    );
+    return m ? m[1].replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() : null;
+  };
+
+  /** The inner markup of the first <main>, or "" if the page has none. */
+  const mainOf = () =>
+    markup.match(/<main(?:\s[^>]*)?>([\s\S]*?)<\/main>/i)?.[1] ?? "";
+
+  return { filename, html, markup, tags, textOf, mainOf };
+}
+
+/**
+ * Asserts the document shell every page in the site shares: HTML5 doctype, a
+ * declared language and charset, a responsive viewport, a usable meta
+ * description, one <h1>, the shared stylesheet, and the expected <title>.
+ */
+export function assertDocumentShell(page, { title }) {
+  const { html, markup, tags, textOf, filename } = page;
+
+  assert.match(html.trimStart(), /^<!DOCTYPE html>/i, `${filename}: no doctype`);
+  assert.match(markup, /<html\b[^>]*\blang="en"/i, `${filename}: no lang="en"`);
+  assert.match(
     markup,
-    tags: (name) => getTags(markup, name),
-    textOf: (name) => getTextOf(markup, name),
-    fileExists: (path) => existsSync(join(root, path)),
-  };
+    /<meta\b[^>]*\bcharset="utf-8"/i,
+    `${filename}: no utf-8 charset`,
+  );
+
+  const viewport = markup.match(
+    /<meta\b[^>]*name="viewport"[^>]*content="([^"]*)"/i,
+  );
+  assert.ok(viewport, `${filename}: expected a viewport meta tag`);
+  assert.match(viewport[1], /width=device-width/);
+  assert.match(viewport[1], /initial-scale=1\b/);
+
+  const description = markup.match(
+    /<meta\b[^>]*name="description"[^>]*content="([^"]*)"/i,
+  );
+  assert.ok(description, `${filename}: expected a meta description tag`);
+  const summary = description[1].trim();
+  assert.ok(summary.length > 0, `${filename}: meta description is empty`);
+  // Long enough to be a useful snippet, short enough not to be truncated.
+  assert.ok(
+    summary.length <= 160,
+    `${filename}: meta description is ${summary.length} chars; search engines truncate near 160`,
+  );
+
+  assert.equal(tags("h1").length, 1, `${filename}: expected exactly one <h1>`);
+
+  assert.match(
+    markup,
+    /<link\b[^>]*rel="stylesheet"[^>]*href="styles\.css"/i,
+    `${filename}: does not link styles.css`,
+  );
+
+  assert.equal(textOf("title"), title, `${filename}: wrong <title>`);
 }
 
-export function assertDocumentShell(page, filename) {
-  const { html, markup, fileExists } = page;
-
-  return {
-    hasDoctype: () => html.trimStart().match(/^<!DOCTYPE html>/i),
-    hasLanguage: () => markup.match(/<html\b[^>]*\blang="en"/i),
-    hasCharset: () => markup.match(/<meta\b[^>]*\bcharset="utf-8"/i),
-    hasViewport: () => {
-      const viewport = markup.match(
-        /<meta\b[^>]*name="viewport"[^>]*content="([^"]*)"/i,
-      );
-      return viewport && /width=device-width/.test(viewport[1]) &&
-             /initial-scale=1\b/.test(viewport[1]);
-    },
-    hasDescription: () => {
-      const description = markup.match(
-        /<meta\b[^>]*name="description"[^>]*content="([^"]*)"/i,
-      );
-      return description && description[1].trim().length > 0 &&
-             description[1].length <= 160;
-    },
-    linksStylesheet: () =>
-      markup.match(/<link\b[^>]*rel="stylesheet"[^>]*href="styles\.css"/i),
-    stylesheetExists: () => fileExists("styles.css"),
-  };
-}
-
-/**
- * Extract the text content of the <main> element.
- * @param {Object} page - The loaded page object
- * @returns {string} The text content of the main element
- */
-export function mainOf(page) {
-  return getTextOf(page.markup, "main") ?? "";
-}
-
-/**
- * Count the number of sentences in the given text.
- * A sentence is text ending with a period, question mark, or exclamation mark.
- * @param {string} text - The text to analyze
- * @returns {number} The number of sentences
- */
+/** How many sentences a chunk of copy reads as, tags and markup ignored. */
 export function countSentences(text) {
-  // Match sentence-ending punctuation: period, question mark, exclamation
-  // Avoid counting abbreviations by requiring at least one space or character after
-  const sentences = text.match(/[.!?]+(?:\s|$)/g) || [];
-  return sentences.length;
+  return (text ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(/[.!?]+(?:\s|$)/)
+    .filter((sentence) => sentence.trim().length > 0).length;
+}
+
+/**
+ * How many words a chunk of copy reads as, tags and markup ignored. Pairs with
+ * countSentences(): the service pages are capped at three sentences, so the
+ * only way to keep them saying something is to floor the word count too.
+ */
+export function countWords(text) {
+  const prose = (text ?? "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return prose.length === 0 ? 0 : prose.split(" ").length;
 }
