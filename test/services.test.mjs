@@ -38,17 +38,17 @@ describe("services.html document shell", () => {
   });
 
   test("has exactly one <h1>, reading 'Services'", () => {
-    assert.equal(tags("h1").length, 1);
+    assert.equal(tags("h1").length, 1, "expected exactly one <h1>");
     assert.equal(textOf("h1"), "Services");
   });
 
   test("wraps its content in a single <main> landmark", () => {
-    assert.equal(tags("main").length, 1);
+    assert.equal(tags("main").length, 1, "expected exactly one <main>");
     assert.ok(mainOf().trim().length > 0, "the <main> landmark is empty");
   });
 
   test("carries no <footer> — the social footer is About-specific", () => {
-    assert.equal(tags("footer").length, 0);
+    assert.equal(tags("footer").length, 0, "expected no <footer>");
   });
 
   test("introduces the list with a short line of copy", () => {
@@ -59,25 +59,31 @@ describe("services.html document shell", () => {
       countSentences(intro) <= 2,
       `the intro runs to ${countSentences(intro)} sentences; the list is the page`,
     );
-    assert.doesNotMatch(intro, /lorem ipsum/i);
+    assert.doesNotMatch(intro, /lorem ipsum/i, "the intro is still lorem ipsum");
   });
 
   test("keeps the heading and the intro ahead of the list", () => {
     const listStart = markup.search(/<ul\b/i);
     assert.ok(listStart !== -1, "expected a list");
-    assert.ok(markup.search(/<h1\b/i) < listStart);
-    assert.ok(markup.search(/<p\b/i) < listStart);
+    assert.ok(
+      markup.search(/<h1\b/i) < listStart,
+      "expected the <h1> to precede the list",
+    );
+    assert.ok(
+      markup.search(/<p\b/i) < listStart,
+      "expected the intro <p> to precede the list",
+    );
   });
 });
 
 describe("the services list", () => {
   test("is exactly one <ul class=\"service-list\">", () => {
-    assert.equal(tags("ul").length, 1);
+    assert.equal(tags("ul").length, 1, "expected exactly one <ul>");
     assert.ok(listMatch, 'expected a closed <ul class="service-list">');
   });
 
   test("holds exactly three items, one link each", () => {
-    assert.equal(items.length, 3);
+    assert.equal(items.length, 3, "expected exactly three <li> in the list");
     assert.equal(tags("li").length, 3, "no <li> may sit outside the list");
     for (const [index, item] of items.entries()) {
       assert.equal(
@@ -95,15 +101,20 @@ describe("the services list", () => {
     assert.deepEqual(
       anchors.map((a) => attr(a, "href")),
       EXPECTED.map((e) => e.href),
+      "the list must link the three service pages in the order the brief fixed",
     );
   });
 
   test("gives every link non-empty text", () => {
-    assert.equal(anchors.length, EXPECTED.length);
+    assert.equal(
+      anchors.length,
+      EXPECTED.length,
+      "expected one link per service",
+    );
     for (const [index, anchor] of anchors.entries()) {
       const label = textIn(anchor);
       assert.ok(label.length > 0, `link ${index} has no text`);
-      assert.equal(label, EXPECTED[index].name);
+      assert.equal(label, EXPECTED[index].name, `link ${index} is mislabelled`);
     }
   });
 
@@ -118,12 +129,12 @@ describe("the services list", () => {
 
 describe("services.html keeps the single-stylesheet contract", () => {
   test("adds no inline <style> element", () => {
-    assert.equal(tags("style").length, 0);
+    assert.equal(tags("style").length, 0, "expected no inline <style>");
   });
 
   test("links exactly one stylesheet", () => {
     const links = [...markup.matchAll(/<link\b[^>]*rel="stylesheet"[^>]*>/gi)];
-    assert.equal(links.length, 1);
+    assert.equal(links.length, 1, "expected exactly one stylesheet link");
   });
 
   test("references no remote assets, so the page stays self-contained", () => {

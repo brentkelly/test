@@ -29,5 +29,5 @@ merge. Nothing on `index.html` points at `services.html` yet either — site-wid
 navigation is a separate card.
 
 Page tests share `test-helpers/page.mjs` (`loadPage`, `assertDocumentShell`,
-`countSentences`). `about.test.mjs` and `social.test.mjs` predate it and still
-carry their own copies of those helpers.
+`countSentences`, `countWords`). `about.test.mjs` and `social.test.mjs`
+predate it and still carry their own copies of those helpers.
